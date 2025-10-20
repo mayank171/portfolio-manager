@@ -436,21 +436,44 @@ with tab3:
     st.markdown(f"<h1 style='text-align: center; color: white;'>Calculate Returns</h1>", unsafe_allow_html=True)
 
 
-    monthly_sip = st.number_input("Monthly SIP(₹)", min_value=0.0, max_value=50000.0, value=1000.0, step=100.0)
-    
-    months = years*12
+    # Monthly SIP input
+    monthly_sip = st.number_input("Monthly SIP (₹)", min_value=0.0, max_value=50000.0, value=1000.0, step=100.0)
+
+    # Step-up percentage per year
+    step_up_percent = st.number_input("Yearly Step-up (%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0)
+
+    # Years input
+    years = st.number_input("Investment Duration (Years)", min_value=1, max_value=40, value=10, step=1)
+    months = years * 12
+
     nav_start = df['nav'][0]
     nav_end = price_path[-1][-1]
-    
+
     # Linear growth of NAV
-    navs = [nav_start + (nav_end - nav_start)/months * i for i in range(1, months+1)]
+    navs = [nav_start + (nav_end - nav_start) / months * i for i in range(1, months + 1)]
 
-    total_units = sum(monthly_sip/nav for nav in navs)
+    # Step-up logic
+    total_units = 0
+    current_sip = monthly_sip
+    for month in range(1, months + 1):
+        # Add units for this month
+        total_units += current_sip / navs[month - 1]
+
+        # Increase SIP at the start of each year
+        if month % 12 == 0:
+            current_sip *= (1 + step_up_percent / 100)
+
+    # Final calculations
     future_value = total_units * nav_end
+    total_invest = 0
+    current_sip = monthly_sip
+    for year in range(years):
+        total_invest += current_sip * 12
+        current_sip *= (1 + step_up_percent / 100)
 
-    total_invest = monthly_sip*12*years
     percentage_incr = ((future_value - total_invest) / total_invest) * 100
-    
+
+    # Display
     st.markdown(f"<h2 style='text-align: center; color: white;'>Total Investment: {total_invest:,.2f} ₹</h2>", unsafe_allow_html=True)
     color = "green" if percentage_incr > 0 else "red"
     st.markdown(
@@ -464,22 +487,17 @@ with tab3:
     )
 
 
+
 with tab4:
 
-    st.markdown(f"<h1 style='text-align: center; color: white;'>Gold Projection</h1>", unsafe_allow_html=True)
+    #st.set_page_config(page_title="Gold Projection", layout="centered")
 
-    st.title("Gold Commodity Projection")
+    # --- Header ---
+    st.markdown("<h1 style='text-align: center; color: white;'>Gold Projection</h1>", unsafe_allow_html=True)
 
-    # --- Load or create data ---
-    @st.cache_data
-    def load_data():
-        try:
-            return pd.read_csv("data/gold_portfolio.csv", parse_dates=["Purchase Date"])
-        except FileNotFoundError:
-            return pd.DataFrame(columns=["Purchase Date", "Type", "Quantity (g)", "Buy Price (₹/g)"])
-
-    df = load_data()
-    st.write(df)
+    # --- Session State to hold investments (in-memory only) ---
+    if "investments" not in st.session_state:
+        st.session_state.investments = pd.DataFrame(columns=["Purchase Date", "Type", "Quantity (g)", "Buy Price (₹/g)"])
 
     # --- Fetch live gold price ---
     @st.cache_data(ttl=3600)
@@ -489,41 +507,42 @@ with tab4:
             "x-access-token": "goldapi-4g9e8p7smgug4cig-io",
             "Content-Type": "application/json"
         }
-
         try:
             response = requests.get(url, headers=headers, timeout=10)
             response.raise_for_status()
             data = response.json()
-
-            price_24k = data.get("price_gram_24k")
-            price_22k = data.get("price_gram_22k")
-            date = data.get("date")
-
             return {
-                "24K": round(price_24k, 2),
-                "22K": round(price_22k, 2),
-                "timestamp": date
+                "24K": round(data.get("price_gram_24k", 0), 2),
+                "22K": round(data.get("price_gram_22k", 0), 2),
+                "timestamp": data.get("date")
             }
         except Exception as e:
             st.error(f"⚠️ Error fetching gold price: {e}")
             return None
-    #make_gapi_request()
 
     gold_price = get_live_gold_price()
-
     if gold_price:
         st.success(f"💰 24K Gold: ₹{gold_price['24K']}/g | 22K Gold: ₹{gold_price['22K']}/g")
         st.caption(f"Updated on: {gold_price['timestamp']}")
-        current_price = gold_price["24K"]  
+        current_price = gold_price["24K"]
     else:
         st.warning("Could not fetch live gold price right now.")
-
-    
+        current_price = 0
 
     st.divider()
 
-    # --- Add Investment Form (on main page) ---
-    st.subheader("➕ Add New Investment")
+    import streamlit as st
+    import pandas as pd
+    from datetime import datetime
+
+    # Initialize table if not present
+    if "investments" not in st.session_state:
+        st.session_state.investments = pd.DataFrame(
+            columns=["Purchase Date", "Type", "Quantity (g)", "Buy Price (₹/g)"]
+        )
+
+    # ADD NEW INVESTMENT
+    st.subheader("Add New Investment")
 
     with st.form("add_form", clear_on_submit=True):
         col1, col2, col3, col4 = st.columns(4)
@@ -538,40 +557,69 @@ with tab4:
         add = st.form_submit_button("Add Investment")
 
     if add and qty > 0:
-        try:
-            existing_df = pd.read_csv("data/gold_portfolio.csv", parse_dates=["Purchase Date"])
-        except FileNotFoundError:
-            existing_df = pd.DataFrame(columns=df.columns)
-
-        # Append new record
-        new_entry = pd.DataFrame([[date, gold_type, qty, buy_price]], columns=df.columns)
-        updated_df = pd.concat([existing_df, new_entry], ignore_index=True)
-
-        # Save updated CSV
-        updated_df.to_csv("data/gold_portfolio.csv", index=False)
-
-        # Clear cache so the new data is reloaded next run
-        load_data.clear()
+        new_entry = pd.DataFrame(
+            [[date, gold_type, qty, buy_price]],
+            columns=st.session_state.investments.columns
+        )
+        st.session_state.investments = pd.concat(
+            [st.session_state.investments, new_entry],
+            ignore_index=True
+        )
         st.success("✅ Investment added successfully!")
-        st.rerun()
 
-
+    # DELETE INVESTMENT(S)
     st.divider()
+    st.subheader("Delete Investment")
 
-    # --- Portfolio Summary and Metrics ---
+    df = st.session_state.investments.copy()
+
+    if not df.empty:
+        # Create label for selection
+        df["Label"] = (
+            df["Purchase Date"].astype(str)
+            + " | " + df["Type"]
+            + " | " + df["Quantity (g)"].astype(str) + "g"
+        )
+
+        to_delete = st.multiselect(
+            "Select investment(s) to delete:",
+            df["Label"].tolist()
+        )
+
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            if st.button("Delete Selected", type="primary"):
+                if to_delete:
+                    new_df = df[~df["Label"].isin(to_delete)].drop(columns=["Label"])
+                    st.session_state.investments = new_df
+                    st.success(f"✅ Deleted {len(to_delete)} investment(s) successfully!")
+                    st.rerun()
+                else:
+                    st.warning("⚠ Please select at least one investment to delete.")
+        with col2:
+            if st.button("🧹 Clear All Investments"):
+                st.session_state.investments = pd.DataFrame(
+                    columns=["Purchase Date", "Type", "Quantity (g)", "Buy Price (₹/g)"]
+                )
+                st.success("🗑 All investments cleared.")
+                st.rerun()
+    else:
+        st.info("No investments yet. Add one above to get started!")
+
+    
+
+    # --- Portfolio Summary ---
+    df = st.session_state.investments.copy()
+
     if not df.empty:
         df["Invested Value"] = df["Quantity (g)"] * df["Buy Price (₹/g)"]
         df["Current Value"] = df["Quantity (g)"] * current_price
         df["Profit/Loss"] = df["Current Value"] - df["Invested Value"]
-        #st.write(df['Profit/Loss'])
         df["% Gain/Loss"] = (df["Profit/Loss"] / df["Invested Value"]) * 100
-        #st.write(df['% Gain/Loss'])
-
-        df["Years Held"] = (datetime.today() - pd.to_datetime(df["Purchase Date"],errors="coerce")).dt.days / 365
+        df["Years Held"] = (datetime.today() - pd.to_datetime(df["Purchase Date"], errors="coerce")).dt.days / 365
         df["CAGR (%)"] = ((df["Current Value"] / df["Invested Value"]) ** (1 / df["Years Held"]) - 1) * 100
         df["CAGR (%)"] = df["CAGR (%)"].replace([math.inf, -math.inf], 0).fillna(0)
 
-        st.subheader("📊 Portfolio Summary")
         total_invested = df["Invested Value"].sum()
         total_current = df["Current Value"].sum()
         total_gain = total_current - total_invested
@@ -582,46 +630,15 @@ with tab4:
         col2.metric("Current Value", f"₹{total_current:,.0f}")
         col3.metric("Profit/Loss", f"₹{total_gain:,.0f}", f"{gain_percent:.2f}%")
 
-        st.divider()
         st.subheader("📄 Investment Details")
-        st.dataframe(
-            df.style.format({
-                "Buy Price (₹/g)": "{:.2f}",
-                "Current Value": "{:.2f}",
-                "Profit/Loss": "{:.2f}"
-            })
-        )
+        st.dataframe(df.style.format({
+            "Buy Price (₹/g)": "{:.2f}",
+            "Current Value": "{:.2f}",
+            "Profit/Loss": "{:.2f}"
+        }))
 
-        st.divider()
-        st.subheader("📈 Value by Type")
-        pie_fig = px.pie(df, names="Type", values="Current Value", title="Portfolio Distribution by Type")
+        st.subheader("📈 Portfolio by Type")
+        pie_fig = px.pie(df, names="Type", values="Current Value", title="Distribution by Type")
         st.plotly_chart(pie_fig, use_container_width=True)
-
-        st.subheader("📆 Historical Growth (approx)")
-        line_fig = px.line(df, x="Purchase Date", y="Invested Value", color="Type", title="Investment Value Over Time")
-        st.plotly_chart(line_fig, use_container_width=True)
-
     else:
         st.info("No investments yet. Add one above to get started!")
-
-    
-
-    st.subheader("🗑 Delete Investment")
-
-    if not df.empty:
-        df["Purchase Date"] = pd.to_datetime(df["Purchase Date"], errors="coerce")
-        df = df.dropna(subset=["Purchase Date"])
-        df["Label"] = df["Purchase Date"].dt.strftime("%Y-%m-%d") + " | " + df["Type"] + " | " + df["Quantity (g)"].astype(str) + "g"
-
-        # Let user select investments to delete
-        to_delete = st.multiselect("Select investments to delete", df["Label"].tolist())
-
-        if st.button("Delete Selected"):
-            if to_delete:
-                df = df[~df["Label"].isin(to_delete)].copy()
-                df.drop(columns=["Label"], inplace=True)
-                df.to_csv("data/gold_portfolio.csv", index=False)
-                st.success(f"Deleted {len(to_delete)} investment(s) successfully!")
-                st.rerun()
-            else:
-                st.warning("No investment selected for deletion.")
