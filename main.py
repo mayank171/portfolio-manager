@@ -683,7 +683,7 @@ with tab4:
     def get_live_gold_price():
         url = "https://www.goldapi.io/api/XAU/INR"
         headers = {
-            "x-access-token": "goldapi-4g9e8p7smgug4cig-io",
+            "x-access-token": "goldapi-c6kenk19mh4dmhji-io",
             "Content-Type": "application/json"
         }
         try:
@@ -826,7 +826,7 @@ with tab5:
     def get_live_silver_price():
         url = "https://www.goldapi.io/api/XAG/INR"
         headers = {
-            "x-access-token": "goldapi-4g9e8p7smgug4cig-io",
+            "x-access-token": "goldapi-c6kenk19mh4dmhji-io",
             "Content-Type": "application/json"
         }
         try:
