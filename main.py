@@ -82,7 +82,7 @@ def fv_monthly_nps(monthly_contrib, years, rate, employer_contrib=0, principal=0
 st.set_page_config(layout="wide",initial_sidebar_state="collapsed")
 st.title("📈 Personal Finance Manager")
 
-tab1, tab2, tab3, tab4 = st.tabs(['PF','NPS','Mutual Funds','Gold'])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(['PF','NPS','Mutual Funds','Gold','Silver'])
 
 mf =Mftool()
 
@@ -608,7 +608,7 @@ with tab4:
             #responsive=True,
             #title=title or 'Monte Carlo Price Simulation',
             xaxis_title='Date',
-            yaxis_title='NAV / Portfolio Value',
+            yaxis_title='Gold Value',
             hovermode='closest',
             
             template='plotly_white',
@@ -672,6 +672,8 @@ with tab4:
         break
 
 
+    st.divider()
+
     # --- Session State to hold investments (in-memory only) ---
     if "investments" not in st.session_state:
         st.session_state.investments = pd.DataFrame(columns=["Purchase Date", "Type", "Quantity (g)", "Buy Price (₹/g)"])
@@ -699,18 +701,13 @@ with tab4:
 
     gold_price = get_live_gold_price()
     if gold_price:
-        st.success(f"💰 24K Gold: ₹{gold_price['24K']}/g | 22K Gold: ₹{gold_price['22K']}/g")
+        st.success(f"💰 24K Gold Today: ₹{gold_price['24K']}/g | 22K Gold Today: ₹{gold_price['22K']}/g")
         st.caption(f"Updated on: {gold_price['timestamp']}")
         current_price = gold_price["24K"]
     else:
         st.warning("Could not fetch live gold price right now.")
         current_price = 0
 
-    st.divider()
-
-    import streamlit as st
-    import pandas as pd
-    from datetime import datetime
 
     # Initialize table if not present
     if "investments" not in st.session_state:
@@ -819,3 +816,142 @@ with tab4:
         st.plotly_chart(pie_fig, use_container_width=True)
     else:
         st.info("No investments yet. Add one above to get started!")
+
+
+with tab5:
+    st.markdown("<h1 style='text-align: center; color: white;'>Silver Projection</h1>", unsafe_allow_html=True)
+
+    # --- Live Silver Price ---
+    @st.cache_data(ttl=3600)
+    def get_live_silver_price():
+        url = "https://www.goldapi.io/api/XAG/INR"
+        headers = {
+            "x-access-token": "goldapi-4g9e8p7smgug4cig-io",
+            "Content-Type": "application/json"
+        }
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            return {
+                "24K": round(data.get("price_gram_24k", 0), 2),
+                "22K": round(data.get("price_gram_22k", 0), 2),
+                "timestamp": data.get("date")
+            }
+        except Exception as e:
+            st.error(f"⚠️ Error fetching silver price: {e}")
+            return None
+
+    silver_price = get_live_silver_price()
+    #st.write(silver_price['24K'])
+    if silver_price:
+        st.success(f"💍 Silver Price Today: ₹{silver_price['24K']}/g")
+        st.caption(f"Updated on: {silver_price['timestamp']}")
+        current_price = silver_price["24K"]
+    else:
+        st.warning("Could not fetch live silver price right now.")
+        current_price = 0
+
+    # --- Initialize silver investment table ---
+    if "silver_investments" not in st.session_state:
+        st.session_state.silver_investments = pd.DataFrame(
+            columns=["Purchase Date", "Type", "Quantity (g)", "Buy Price (₹/g)"]
+        )
+
+    # --- Add New Investment ---
+    st.subheader("Add New Silver Investment")
+    with st.form("add_form_silver", clear_on_submit=True):
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            date = st.date_input("Purchase Date", datetime.today(), key="silver_date")
+        with col2:
+            silver_type = st.selectbox("Type", ["Physical", "ETF", "Digital"], key="silver_type")
+        with col3:
+            qty = st.number_input("Quantity (grams)", min_value=0.1, step=0.1, key="silver_qty")
+        with col4:
+            buy_price = st.number_input("Buy Price (₹/g)", min_value=0.0, step=0.1, key="silver_buy")
+        add = st.form_submit_button("Add Investment", type="primary")
+
+    if add and qty > 0:
+        new_entry = pd.DataFrame(
+            [[date, silver_type, qty, buy_price]],
+            columns=st.session_state.silver_investments.columns
+        )
+        st.session_state.silver_investments = pd.concat(
+            [st.session_state.silver_investments, new_entry],
+            ignore_index=True
+        )
+        st.success("✅ Silver investment added successfully!")
+
+    # --- Delete Investment ---
+    st.divider()
+    st.subheader("Delete Silver Investment")
+
+    df_silver = st.session_state.silver_investments.copy()
+
+    if not df_silver.empty:
+        df_silver["Label"] = (
+            df_silver["Purchase Date"].astype(str)
+            + " | " + df_silver["Type"]
+            + " | " + df_silver["Quantity (g)"].astype(str) + "g"
+        )
+
+        to_delete = st.multiselect(
+            "Select investment(s) to delete:",
+            df_silver["Label"].tolist(),
+            key="multiselect_silver"
+        )
+
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            if st.button("Delete Selected", key="delete_silver"):
+                if to_delete:
+                    new_df = df_silver[~df_silver["Label"].isin(to_delete)].drop(columns=["Label"])
+                    st.session_state.silver_investments = new_df
+                    st.success(f"✅ Deleted {len(to_delete)} silver investment(s) successfully!")
+                    st.rerun()
+                else:
+                    st.warning("⚠ Please select at least one investment to delete.")
+        with col2:
+            if st.button("🧹 Clear All Silver Investments", key="clear_silver"):
+                st.session_state.silver_investments = pd.DataFrame(
+                    columns=["Purchase Date", "Type", "Quantity (g)", "Buy Price (₹/g)"]
+                )
+                st.success("🗑 All silver investments cleared.")
+                st.rerun()
+    else:
+        st.info("No silver investments yet. Add one above to get started!")
+
+    # --- Portfolio Summary ---
+    df_silver = st.session_state.silver_investments.copy()
+    if not df_silver.empty:
+        df_silver["Invested Value"] = df_silver["Quantity (g)"] * df_silver["Buy Price (₹/g)"]
+        df_silver["Current Value"] = df_silver["Quantity (g)"] * current_price
+        df_silver["Profit/Loss"] = df_silver["Current Value"] - df_silver["Invested Value"]
+        df_silver["% Gain/Loss"] = (df_silver["Profit/Loss"] / df_silver["Invested Value"]) * 100
+        df_silver["Years Held"] = (datetime.today() - pd.to_datetime(df_silver["Purchase Date"], errors="coerce")).dt.days / 365
+        df_silver["CAGR (%)"] = ((df_silver["Current Value"] / df_silver["Invested Value"]) ** (1 / df_silver["Years Held"]) - 1) * 100
+        df_silver["CAGR (%)"] = df_silver["CAGR (%)"].replace([math.inf, -math.inf], 0).fillna(0)
+
+        total_invested = df_silver["Invested Value"].sum()
+        total_current = df_silver["Current Value"].sum()
+        total_gain = total_current - total_invested
+        gain_percent = (total_gain / total_invested) * 100 if total_invested > 0 else 0
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total Invested", f"₹{total_invested:,.0f}")
+        col2.metric("Current Value", f"₹{total_current:,.0f}")
+        col3.metric("Profit/Loss", f"₹{total_gain:,.0f}", f"{gain_percent:.2f}%")
+
+        st.subheader("📄 Silver Investment Details")
+        st.dataframe(df_silver.style.format({
+            "Buy Price (₹/g)": "{:.2f}",
+            "Current Value": "{:.2f}",
+            "Profit/Loss": "{:.2f}"
+        }))
+
+        st.subheader("📈 Portfolio by Type")
+        pie_fig = px.pie(df_silver, names="Type", values="Current Value", title="Distribution by Type")
+        st.plotly_chart(pie_fig, use_container_width=True)
+    else:
+        st.info("No silver investments yet. Add one above to get started!")
