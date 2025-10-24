@@ -819,7 +819,197 @@ with tab4:
 
 
 with tab5:
+
+    def infer_periods_per_year(dates: pd.Series):
+        diffs = dates.sort_values().diff().dropna().dt.days
+        median_days = diffs.median()
+        if median_days<=1.5:
+            return 252
+        if median_days<=9:
+            return 52
+        if median_days<=40:
+            return 12
+        return 1
+
+    def prepare_returns(df, date_col='date', price_col='price'):
+        df = df[[date_col, price_col]].dropna().copy()
+        df[date_col]=pd.to_datetime(df[date_col], format='%Y-%m-%d')
+        df=df.sort_values(date_col)
+        df=df.drop_duplicates(subset=date_col)
+        df['log_ret']=np.log(df[price_col]).diff()
+        df=df.dropna(subset=['log_ret'])
+        ppy=infer_periods_per_year(df[date_col])
+        return df,ppy
+
+    def annualized_stats(log_returns, periods_per_year):
+        mu_period = log_returns.mean()
+        sigma_period = log_returns.std(ddof=1)
+        mu_annual = mu_period*periods_per_year
+        sigma_annual = sigma_period*np.sqrt(periods_per_year)
+        return mu_annual, sigma_annual
+
+    
+    def simulate_gbm_paths(S0, mu, sigma, years, periods_per_year, n_sims=10000, random_seed=None):
+        if random_seed is not None:
+            np.random.seed(random_seed)
+
+        steps = int(years*periods_per_year)
+        dt = 1.0/periods_per_year
+
+        drift = (mu-0.5*sigma**2)*dt
+        diffusion = sigma*np.sqrt(dt)
+
+        Z = np.random.normal(size=(steps, n_sims))
+        increments = drift + diffusion*Z
+        log_paths = np.cumsum(increments, axis=0)
+
+        log_paths = np.vstack([np.zeros(n_sims), log_paths])
+        price_paths = S0*np.exp(log_paths)
+        return price_paths
+
+    
+    def summarize_and_plots(price_paths, dates_future, percentiles=(5,25,50,75,95), title=None):
+        # Calculate percentiles
+        pct = np.percentile(price_paths, percentiles, axis=1)
+        median = np.percentile(price_paths, 50, axis=1)
+        final_vals = price_paths[-1, :]
+        
+        # Summary stats
+        summary = {
+            'median_final': np.median(final_vals),
+            'p5_final': np.percentile(final_vals, 5),
+            'p25_final': np.percentile(final_vals, 25),
+            'p75_final': np.percentile(final_vals, 75),
+            'p95_final': np.percentile(final_vals, 95),
+        }
+
+        # Create interactive figure
+        fig = go.Figure()
+
+        # Percentile bands
+        fig.add_trace(go.Scatter(
+            x=dates_future, y=pct[-1],
+            line=dict(color='skyblue', width=0),
+            showlegend=False, hoverinfo='skip'
+        ))
+        fig.add_trace(go.Scatter(
+            x=dates_future, y=pct[0],
+            fill='tonexty',
+            fillcolor='rgba(135,206,250,0.2)',
+            line=dict(color='skyblue', width=0),
+            name=f'{percentiles[0]}-{percentiles[-1]} pct band'
+        ))
+        fig.add_trace(go.Scatter(
+            x=dates_future, y=pct[-2],
+            line=dict(color='dodgerblue', width=0),
+            showlegend=False, hoverinfo='skip'
+        ))
+        fig.add_trace(go.Scatter(
+            x=dates_future, y=pct[1],
+            fill='tonexty',
+            fillcolor='rgba(30,144,255,0.25)',
+            line=dict(color='dodgerblue', width=0),
+            name=f'{percentiles[1]}-{percentiles[-2]} pct band'
+        ))
+
+        # Median line
+        fig.add_trace(go.Scatter(
+            x=dates_future, y=median,
+            mode='markers',
+            name='Median',
+            line=dict(color='white'),
+            hovertemplate='Date: %{x}<br>Value: %{y:.2f}'
+        ))
+
+        # Sample paths (up to 50)
+        for i in range(0, min(50, price_paths.shape[1]), max(1, price_paths.shape[1]//50)):
+            fig.add_trace(go.Scatter(
+                x=dates_future, y=price_paths[:, i],
+                mode='lines',
+                line=dict(color='white', width=1),
+                name='Sim path' if i == 0 else None,
+                hoverinfo='x+y'
+            ))
+
+        # Layout
+        fig.update_layout(
+            autosize=True,
+            #responsive=True,
+            #title=title or 'Monte Carlo Price Simulation',
+            xaxis_title='Date',
+            yaxis_title='Silver Value',
+            hovermode='closest',
+            
+            template='plotly_white',
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=-0.3,
+                xanchor="center",
+                x=0.5,
+                font=dict(size=10)
+            ),
+            margin=dict(l=10, r=10, t=40, b=40),
+        )
+
+        fig.update_xaxes(rangeslider_visible=True)
+
+        config = {
+            'scrollZoom': True,
+            'responsive': True,
+            'displayModeBar': True,
+            'modeBarButtonsToRemove': ['select2d', 'lasso2d'],
+            'displaylogo': False
+        }
+
+        st.plotly_chart(fig, use_container_width=True, config=config)
+        return summary, final_vals
+
+
+
     st.markdown("<h1 style='text-align: center; color: white;'>Silver Projection</h1>", unsafe_allow_html=True)
+
+    df = pd.read_csv('silver_prices_2yrs.csv')
+
+    df['Open'] = df['Open']/31.1035
+    
+    df=df.drop(['High','Low','Last','Change','Volume','%Change'],axis=1)
+    #st.write(df.head())
+
+    date_col = 'Time'
+    price_col = 'Open'
+
+    #df['Price'] = df['Price'].astype(float)
+    #st.write(df[price_col])
+
+    df,ppy = prepare_returns(df, date_col=date_col, price_col=price_col)
+    mu, sigma = annualized_stats(df['log_ret'], ppy)
+
+
+    yr = st.slider("Projection Horizon (Yrs)",1,20,5)
+    sims = 10000
+    S0 = df.iloc[-1][price_col]
+    
+    price_path = simulate_gbm_paths(S0, mu, sigma, yr, ppy, n_sims=sims, random_seed=42)
+    #st.write(price_path)
+
+    last_date = pd.to_datetime(df.iloc[-1][date_col])
+    median_delta_days = df[date_col].sort_values().diff().dropna().dt.days.median()
+    steps = int(years*ppy)
+    dates_future = [last_date+timedelta(days = int(median_delta_days*i)) for i in range(steps+1)]
+    summary, vals = summarize_and_plots(price_path, dates_future, title=f'{yr}-yr Monte Carlo ({sims} sims)')
+
+    for k,v in summary.items():
+        st.markdown(f"<h2 style='text-align: center; color: dodgerblue;'>Median price after {yr} years: {v:,.2f} ₹</h2>", unsafe_allow_html=True)
+        break
+
+
+    st.divider()
+
+    # --- Session State to hold investments (in-memory only) ---
+    if "investments" not in st.session_state:
+        st.session_state.investments = pd.DataFrame(columns=["Purchase Date", "Type", "Quantity (g)", "Buy Price (₹/g)"])
+
 
     # --- Live Silver Price ---
     @st.cache_data(ttl=3600)
