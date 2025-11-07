@@ -1,9 +1,0 @@
-streamlit
-pandas
-matplotlib
-statsmodels
-mftool
-numpy
-plotly
-Deprecated
-requests
