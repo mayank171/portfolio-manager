@@ -4,7 +4,6 @@
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-Streamlit-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://portfolio-manager-v0.streamlit.app)
 [![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
-[![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
 **A full-stack AI-powered investment analysis platform for comprehensive portfolio tracking and intelligent insights**
 
@@ -208,37 +207,6 @@ The application will open in your default browser at `http://localhost:8501`
 
 ---
 
-## 📁 Project Structure
-
-```
-portfolio-manager/
-│
-├── main.py                      # Streamlit application entry point
-├── requirements.txt             # Python dependencies
-│
-├── data/
-│   ├── Gold Price.csv          # Historical gold prices
-│   ├── silver_prices_2yrs.csv  # Historical silver prices
-│   └── famous_mutual_funds.txt # Reference mutual fund list
-│
-├── modules/                     # Core functionality modules
-│   ├── portfolio.py            # Portfolio management logic
-│   ├── monte_carlo.py          # Simulation engine
-│   ├── rag_system.py           # AI/RAG implementation
-│   └── data_fetcher.py         # Market data integration
-│
-├── utils/                       # Helper functions
-│   ├── calculations.py         # Financial calculations
-│   └── visualizations.py       # Chart generation
-│
-└── config/                      # Configuration files
-    └── settings.py             # App settings and constants
-```
-
----
-
-## 🔧 Configuration
-
 ### API Keys
 
 The application requires API keys for certain features:
@@ -353,11 +321,6 @@ Contributions are welcome! Here's how you can help:
 
 ---
 
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
 
 ## 👨‍💻 Author
 
@@ -365,7 +328,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - GitHub: [@mayank171](https://github.com/mayank171)
 - LinkedIn: [Mayank Mewar](https://www.linkedin.com/in/mayank-mewar-586090173/)
-- Blog: [GeekTech](https://geektech1717.blogspot.com/)
 
 ---
 
@@ -383,7 +345,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 For questions, suggestions, or feedback:
 - Open an issue on GitHub
 - Connect on LinkedIn
-- Email: [Your Email]
+- Email: [mayank17.mewar@gmail.com]
 
 ---
 
